@@ -1,12 +1,9 @@
 import "./App.css";
-import InteractiveRoom from "./components/InteractiveRoom";
+import "./styles/room.css";
+import { InteractiveRoom } from "./components/InteractiveRoom";
 
 function App() {
-  return (
-    <div className="app-shell">
-      <InteractiveRoom />
-    </div>
-  );
+  return <InteractiveRoom />;
 }
 
 export default App;

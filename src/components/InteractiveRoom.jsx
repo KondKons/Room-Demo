@@ -1,386 +1,498 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { hotspots } from '../data/hotspots.js';
 
-const hotspots = [
-  {
-    id: "socialWall",
-    title: "Social Wall",
-    description: "Центр социального контента, видео и карточек.",
-    x: 22,
-    y: 21,
-    width: 47,
-    height: 32,
-    focusX: 46,
-    focusY: 34,
-    zoom: 1.75,
-    type: "wall",
-  },
-  {
-    id: "musicCenter",
-    title: "Music Center",
-    description: "Управление музыкой и атмосферой комнаты.",
-    x: 54,
-    y: 57,
-    width: 22,
-    height: 15,
-    focusX: 64,
-    focusY: 61,
-    zoom: 2.15,
-    type: "music",
-  },
-  {
-    id: "laptop",
-    title: "Workspace",
-    description: "Рабочее пространство пользователя: заметки, задачи, сообщения.",
-    x: 31,
-    y: 63,
-    width: 24,
-    height: 18,
-    focusX: 42,
-    focusY: 70,
-    zoom: 2.05,
-    type: "workspace",
-  },
-  {
-    id: "telescope",
-    title: "Telescope",
-    description: "Точка исследования и наблюдения.",
-    x: 2,
-    y: 39,
-    width: 16,
-    height: 28,
-    focusX: 12,
-    focusY: 49,
-    zoom: 2.2,
-    type: "explore",
-  },
-  {
-    id: "doorPerson",
-    title: "Profile",
-    description: "Вход в персональный профиль и приветственный сценарий.",
-    x: 77,
-    y: 21,
-    width: 17,
-    height: 56,
-    focusX: 85,
-    focusY: 45,
-    zoom: 1.9,
-    type: "profile",
-  },
-];
+const PAN_SENSITIVITY = 0.32;
+const PAN_MAX_X_RATIO = 0.05;
+const PAN_MAX_Y_RATIO = 0.045;
+const PAN_IDLE_RETURN_DELAY = 140;
+const PAN_IDLE_RETURN_EASING = 0.035;
+const PAN_RENDER_SMOOTHING = 0.1;
+const WHEEL_DELTA_LIMIT = 28;
+const IDLE_DELAY_MS = 2600;
+const IDLE_AMPLITUDE_X = 3.2;
+const IDLE_AMPLITUDE_Y = 2.2;
+const IDLE_SPEED = 0.00042;
+const LAPTOP_EXPAND_DELAY_MS = 560;
 
-const buttonStyle = {
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(255,255,255,0.08)",
-  color: "#fff",
-  borderRadius: 12,
-  padding: "10px 14px",
-  cursor: "pointer",
+const introContent = {
+  title: 'Habitat',
+  subtitle: 'A personal digital room interface',
+  cta: 'Enter Room',
 };
 
-function panelContent(active, playing, setPlaying) {
-  if (!active) return null;
+const panelConfig = {
+  socialWall: {
+    eyebrow: 'Content Hub',
+    summary: 'Content hub for social updates, video, and shared moments.',
+    actions: ['Feed', 'Video', 'Chat', 'Cards'],
+  },
+  musicCenter: {
+    eyebrow: 'Media Control',
+    summary: 'Media control for atmosphere, sound, and ambient playback.',
+    actions: ['Prev', 'Play/Pause', 'Next'],
+  },
+  laptop: {
+    eyebrow: 'Productivity Area',
+    summary: 'Personal productivity space for tasks, notes, and communication.',
+    actions: ['Notes', 'Tasks', 'Messages'],
+  },
+  telescope: {
+    eyebrow: 'Discovery',
+    summary: 'Discovery point for exploration and perspective-based experiences.',
+    actions: ['Explore'],
+  },
+  doorPerson: {
+    eyebrow: 'Identity Layer',
+    summary: 'Identity layer for presence, profile, and room entry.',
+    actions: ['Profile', 'Welcome'],
+  },
+  phone: {
+    eyebrow: 'Communication',
+    summary: 'Fast communication surface for personal updates and quick actions.',
+    actions: ['Notifications', 'Messages', 'Calls'],
+  },
+  bookshelf: {
+    eyebrow: 'Knowledge Space',
+    summary: 'Knowledge space for saved content, learning, and reference.',
+    actions: ['Library', 'Notes', 'Learning'],
+  },
+};
 
-  if (active.type === "music") {
+function ActivePanel({ hotspot, activeAction, onAction, onBack }) {
+  if (!hotspot) {
     return (
-      <div style={{ display: "grid", gap: 12 }}>
-        <div style={{ fontSize: 14, color: "rgba(255,255,255,0.72)" }}>
-          Now playing: Habitat Ambient Session
-        </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button style={buttonStyle}>Prev</button>
-          <button
-            style={{ ...buttonStyle, background: "#fff", color: "#111" }}
-            onClick={() => setPlaying(!playing)}
-          >
-            {playing ? "Pause" : "Play"}
-          </button>
-          <button style={buttonStyle}>Next</button>
-        </div>
-      </div>
+      <aside className="room-panel room-panel--idle">
+        <p className="room-panel__eyebrow">Habitat</p>
+        <h2>Interactive Room</h2>
+        <p className="room-panel__description">
+          An immersive personal room interface for presence, media, productivity, communication, and identity.
+        </p>
+      </aside>
     );
   }
 
-  if (active.type === "wall") {
-    return (
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-        <button style={buttonStyle}>Feed</button>
-        <button style={buttonStyle}>Video</button>
-        <button style={buttonStyle}>Chat</button>
-        <button style={buttonStyle}>Cards</button>
-      </div>
-    );
-  }
-
-  if (active.type === "workspace") {
-    return (
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-        <button style={buttonStyle}>Notes</button>
-        <button style={buttonStyle}>Tasks</button>
-        <button style={buttonStyle}>Messages</button>
-      </div>
-    );
-  }
-
-  if (active.type === "explore") {
-    return (
-      <div style={{ fontSize: 14, color: "rgba(255,255,255,0.72)" }}>
-        Explore mode for discovery and panoramic scenes.
-      </div>
-    );
-  }
+  const config = panelConfig[hotspot.id];
 
   return (
-    <div style={{ fontSize: 14, color: "rgba(255,255,255,0.72)" }}>
-      Welcome back. This object can open profile and room entry actions.
+    <aside className="room-panel">
+      <div className="room-panel__header">
+        <div>
+          <p className="room-panel__eyebrow">{hotspot.type}</p>
+          <h2>{hotspot.title}</h2>
+        </div>
+        <button type="button" className="room-panel__back" onClick={onBack}>
+          Back to room
+        </button>
+      </div>
+
+      <p className="room-panel__description">{hotspot.description}</p>
+
+      <div className="room-panel__card">
+        <p className="room-panel__eyebrow">{config.eyebrow}</p>
+        <strong>{activeAction}</strong>
+        <span>{config.summary}</span>
+      </div>
+
+      <div className="room-panel__actions">
+        {config.actions.map((action) => (
+          <button
+            key={action}
+            type="button"
+            className={action === activeAction ? 'is-active' : ''}
+            onClick={() => onAction(action)}
+          >
+            {action}
+          </button>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+function WorkspaceOverlay({ onClose }) {
+  return (
+    <div className="workspace-overlay" role="dialog" aria-modal="true" aria-label="Workspace">
+      <div className="workspace-overlay__chrome">
+        <div>
+          <p className="workspace-overlay__eyebrow">Workspace</p>
+          <h2>Personal productivity space</h2>
+        </div>
+        <button type="button" className="workspace-overlay__close" onClick={onClose}>
+          Back to Room
+        </button>
+      </div>
+
+      <div className="workspace-overlay__grid">
+        <article className="workspace-overlay__card">
+          <p className="workspace-overlay__label">Notes</p>
+          <strong>Capture ideas, meeting points, and next steps.</strong>
+          <div className="workspace-overlay__list">
+            <span>Investor follow-up: sharpen value story around room identity.</span>
+            <span>Product note: keep media, workspace, and profile surfaces tightly connected.</span>
+            <span>Design pass: preserve calm ambient motion without dashboard noise.</span>
+          </div>
+        </article>
+
+        <article className="workspace-overlay__card">
+          <p className="workspace-overlay__label">Tasks</p>
+          <strong>Track priorities and move execution forward.</strong>
+          <div className="workspace-overlay__checklist">
+            <span>Refine hotspot storytelling across core objects.</span>
+            <span>Review premium motion timing for room entry.</span>
+            <span>Prepare concise investor walkthrough flow.</span>
+          </div>
+        </article>
+
+        <article className="workspace-overlay__card">
+          <p className="workspace-overlay__label">Messages</p>
+          <strong>Stay connected with lightweight communication.</strong>
+          <div className="workspace-overlay__messages">
+            <span><strong>Design:</strong> Updated hover treatment feels cleaner and more intentional.</span>
+            <span><strong>Product:</strong> Workspace mode now reads like a surface, not a modal.</span>
+            <span><strong>Founder:</strong> Keep this flow minimal, immersive, and investor-friendly.</span>
+          </div>
+        </article>
+      </div>
     </div>
   );
 }
 
-export default function InteractiveRoom() {
-  const [hovered, setHovered] = useState(null);
+export function InteractiveRoom() {
+  const roomRef = useRef(null);
+  const rafRef = useRef(0);
+  const laptopExpandTimeoutRef = useRef(0);
+  const panRef = useRef({ x: 0, y: 0 });
+  const targetRef = useRef({ x: 0, y: 0 });
+  const manualPanRef = useRef({ x: 0, y: 0 });
+  const manualPanDisplayRef = useRef({ x: 0, y: 0 });
+  const lastPanInputAtRef = useRef(0);
+  const lastInteractionAtRef = useRef(0);
+  const [hasEntered, setHasEntered] = useState(false);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [manualPan, setManualPan] = useState({ x: 0, y: 0 });
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [hoveredId, setHoveredId] = useState(null);
   const [activeId, setActiveId] = useState(null);
-  const [playing, setPlaying] = useState(false);
-  const [pointer, setPointer] = useState({ x: 0.5, y: 0.5 });
+  const [activeAction, setActiveAction] = useState('');
+  const [expandedObject, setExpandedObject] = useState(null);
+  const [showHotspots, setShowHotspots] = useState(false);
 
-  const active = useMemo(
+  const activeHotspot = useMemo(
     () => hotspots.find((item) => item.id === activeId) ?? null,
-    [activeId]
+    [activeId],
   );
 
-  const transform = active
-    ? `scale(${active.zoom}) translate(${-active.focusX + 50}%, ${-active.focusY + 50}%)`
-    : `scale(1.06) translate(${(pointer.x - 0.5) * -2.2}%, ${(pointer.y - 0.5) * -2.2}%)`;
+  useEffect(() => {
+    return () => window.clearTimeout(laptopExpandTimeoutRef.current);
+  }, []);
+
+  useEffect(() => {
+    const node = roomRef.current;
+    if (!node) {
+      return undefined;
+    }
+
+    const observer = new ResizeObserver(([entry]) => {
+      setViewport({
+        width: entry.contentRect.width,
+        height: entry.contentRect.height,
+      });
+    });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const animate = () => {
+      const now = performance.now();
+      const idleTime = now - lastInteractionAtRef.current;
+      const idleMotion =
+        hasEntered && !activeHotspot && idleTime > IDLE_DELAY_MS
+          ? {
+              x: Math.sin(now * IDLE_SPEED) * IDLE_AMPLITUDE_X,
+              y: Math.cos(now * IDLE_SPEED * 0.78) * IDLE_AMPLITUDE_Y,
+            }
+          : { x: 0, y: 0 };
+
+      panRef.current.x += (targetRef.current.x - panRef.current.x) * 0.07;
+      panRef.current.y += (targetRef.current.y - panRef.current.y) * 0.07;
+
+      if (hasEntered && !activeHotspot && now - lastPanInputAtRef.current > PAN_IDLE_RETURN_DELAY) {
+        const easedTarget = {
+          x: Math.abs(manualPanRef.current.x) < 0.2 ? 0 : manualPanRef.current.x * (1 - PAN_IDLE_RETURN_EASING),
+          y: Math.abs(manualPanRef.current.y) < 0.2 ? 0 : manualPanRef.current.y * (1 - PAN_IDLE_RETURN_EASING),
+        };
+
+        if (easedTarget.x !== manualPanRef.current.x || easedTarget.y !== manualPanRef.current.y) {
+          manualPanRef.current = easedTarget;
+          setManualPan(easedTarget);
+        }
+      }
+
+      manualPanDisplayRef.current.x += (manualPanRef.current.x - manualPanDisplayRef.current.x) * PAN_RENDER_SMOOTHING;
+      manualPanDisplayRef.current.y += (manualPanRef.current.y - manualPanDisplayRef.current.y) * PAN_RENDER_SMOOTHING;
+
+      setPan({
+        x: panRef.current.x + idleMotion.x,
+        y: panRef.current.y + idleMotion.y,
+      });
+      rafRef.current = window.requestAnimationFrame(animate);
+    };
+
+    rafRef.current = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(rafRef.current);
+  }, [activeHotspot, hasEntered]);
+
+  useEffect(() => {
+    if (!activeHotspot) {
+      setActiveAction('');
+      return;
+    }
+
+    setActiveAction(panelConfig[activeHotspot.id].actions[0]);
+  }, [activeHotspot]);
+
+  const updateManualPan = (nextPan) => {
+    manualPanRef.current = nextPan;
+    setManualPan(nextPan);
+  };
+
+  const markInteraction = () => {
+    lastInteractionAtRef.current = performance.now();
+  };
+
+  const handleEnterRoom = () => {
+    markInteraction();
+    setHasEntered(true);
+  };
+
+  const handleMouseMove = (event) => {
+    if (!hasEntered || expandedObject) {
+      return;
+    }
+
+    markInteraction();
+
+    if (activeHotspot) {
+      targetRef.current = { x: 0, y: 0 };
+      return;
+    }
+
+    const rect = roomRef.current?.getBoundingClientRect();
+    if (!rect) {
+      return;
+    }
+
+    const normalizedX = (event.clientX - rect.left) / rect.width - 0.5;
+    const normalizedY = (event.clientY - rect.top) / rect.height - 0.5;
+
+    targetRef.current = {
+      x: normalizedX * -18,
+      y: normalizedY * -14,
+    };
+  };
+
+  const clampManualPan = (nextPan, size) => {
+    const maxX = Math.max(26, size.width * PAN_MAX_X_RATIO);
+    const maxY = Math.max(22, size.height * PAN_MAX_Y_RATIO);
+
+    return {
+      x: Math.min(maxX, Math.max(-maxX, nextPan.x)),
+      y: Math.min(maxY, Math.max(-maxY, nextPan.y)),
+    };
+  };
+
+  const handleWheel = (event) => {
+    event.preventDefault();
+
+    if (!hasEntered || expandedObject) {
+      return;
+    }
+
+    markInteraction();
+
+    if (activeHotspot) {
+      return;
+    }
+
+    lastPanInputAtRef.current = performance.now();
+
+    const limitedDeltaX = Math.max(-WHEEL_DELTA_LIMIT, Math.min(WHEEL_DELTA_LIMIT, event.deltaX));
+    const limitedDeltaY = Math.max(-WHEEL_DELTA_LIMIT, Math.min(WHEEL_DELTA_LIMIT, event.deltaY));
+
+    updateManualPan(
+      clampManualPan(
+        {
+          x: manualPanRef.current.x - limitedDeltaX * PAN_SENSITIVITY,
+          y: manualPanRef.current.y - limitedDeltaY * PAN_SENSITIVITY,
+        },
+        viewport,
+      ),
+    );
+  };
+
+  const resetView = () => {
+    window.clearTimeout(laptopExpandTimeoutRef.current);
+    markInteraction();
+    setExpandedObject(null);
+    setActiveId(null);
+    setHoveredId(null);
+    targetRef.current = { x: 0, y: 0 };
+    panRef.current = { x: 0, y: 0 };
+    lastPanInputAtRef.current = 0;
+    updateManualPan({ x: 0, y: 0 });
+  };
+
+  const sceneTransform = useMemo(() => {
+    if (activeHotspot && viewport.width && viewport.height) {
+      const focusX = (activeHotspot.focusX / 100) * viewport.width;
+      const focusY = (activeHotspot.focusY / 100) * viewport.height;
+      const translateX = viewport.width / 2 - focusX * activeHotspot.zoom;
+      const translateY = viewport.height / 2 - focusY * activeHotspot.zoom;
+
+      return `translate3d(${translateX}px, ${translateY}px, 0) scale(${activeHotspot.zoom})`;
+    }
+
+    const combinedX = pan.x + manualPanDisplayRef.current.x;
+    const combinedY = pan.y + manualPanDisplayRef.current.y;
+
+    return `translate3d(${combinedX}px, ${combinedY}px, 0) scale(1)`;
+  }, [activeHotspot, pan.x, pan.y, viewport.height, viewport.width, manualPan.x, manualPan.y]);
+
+  const openHotspot = (spotId) => {
+    markInteraction();
+    window.clearTimeout(laptopExpandTimeoutRef.current);
+    setExpandedObject(null);
+    setActiveId(spotId);
+
+    if (spotId === 'laptop') {
+      laptopExpandTimeoutRef.current = window.setTimeout(() => {
+        setExpandedObject('laptop');
+      }, LAPTOP_EXPAND_DELAY_MS);
+    }
+  };
+
+  const closeExpandedObject = () => {
+    markInteraction();
+    window.clearTimeout(laptopExpandTimeoutRef.current);
+    setExpandedObject(null);
+    setHoveredId(null);
+  };
 
   return (
-    <div
-      style={{
-        width: "100%",
-        minHeight: "100vh",
-        background:
-          "radial-gradient(circle at top, #1a2233 0%, #0b0f17 55%, #06080d 100%)",
-        color: "#fff",
-        padding: 24,
-      }}
+    <main
+      className={`room-demo ${hasEntered ? 'is-entered' : 'is-intro'} ${expandedObject ? 'has-expanded-object' : ''}`}
     >
-      <div style={{ maxWidth: 1440, margin: "0 auto" }}>
-        <div style={{ marginBottom: 18 }}>
-          <div
-            style={{
-              fontSize: 12,
-              letterSpacing: "0.22em",
-              textTransform: "uppercase",
-              color: "rgba(255,255,255,0.45)",
-            }}
-          >
-            Investor demo
-          </div>
-          <div style={{ fontSize: 34, fontWeight: 700 }}>Interactive Room</div>
-          <div style={{ fontSize: 15, color: "rgba(255,255,255,0.72)" }}>
-            Hover and click objects to explore the room.
+      <section className="room-demo__stage">
+        <div className="room-demo__intro" aria-hidden={hasEntered}>
+          <div className="room-demo__intro-card">
+            <p className="room-demo__intro-kicker">Spatial Product Demo</p>
+            <h1>{introContent.title}</h1>
+            <p>{introContent.subtitle}</p>
+            <button type="button" className="room-demo__enter" onClick={handleEnterRoom}>
+              {introContent.cta}
+            </button>
           </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1.45fr) 360px",
-            gap: 20,
-            alignItems: "start",
-          }}
-        >
-          <div
-            onMouseMove={(e) => {
-              if (active) return;
-              const rect = e.currentTarget.getBoundingClientRect();
-              setPointer({
-                x: (e.clientX - rect.left) / rect.width,
-                y: (e.clientY - rect.top) / rect.height,
-              });
-            }}
-            style={{
-              position: "relative",
-              width: "100%",
-              aspectRatio: "16 / 9",
-              overflow: "hidden",
-              borderRadius: 28,
-              background: "#111",
-              boxShadow: "0 20px 80px rgba(0,0,0,0.45)",
-            }}
-          >
-            <img
-              src="/room.jpg"
-              alt="Interactive room"
-              style={{
-                position: "absolute",
-                inset: 0,
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                transform,
-                transformOrigin: "center center",
-                transition: "transform 700ms cubic-bezier(.2,.8,.2,1)",
-                userSelect: "none",
-                pointerEvents: "none",
-              }}
-              draggable={false}
-            />
+        <div className="room-demo__shell">
+          <div className="room-demo__chrome">
+            <div>
+              <p className="room-demo__kicker">Habitat</p>
+              <p className="room-demo__lede">A personal digital room interface</p>
+            </div>
+          </div>
 
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                background:
-                  "linear-gradient(to top, rgba(0,0,0,0.22), rgba(0,0,0,0.04))",
-              }}
-            />
-
-            {hotspots.map((spot) => {
-              const isHovered = hovered === spot.id;
-              const isActive = activeId === spot.id;
-
-              return (
-                <button
-                  key={spot.id}
-                  onMouseEnter={() => setHovered(spot.id)}
-                  onMouseLeave={() => setHovered(null)}
-                  onClick={() => setActiveId(spot.id)}
-                  style={{
-                    position: "absolute",
-                    left: `${spot.x}%`,
-                    top: `${spot.y}%`,
-                    width: `${spot.width}%`,
-                    height: `${spot.height}%`,
-                    borderRadius: 24,
-                    border: isActive
-                      ? "1px solid rgba(125, 220, 255, 0.9)"
-                      : "1px solid transparent",
-                    background: isActive
-                      ? "rgba(80,180,255,0.12)"
-                      : isHovered
-                        ? "rgba(255,255,255,0.06)"
-                        : "transparent",
-                    boxShadow: isActive
-                      ? "0 0 0 1px rgba(255,255,255,0.12), 0 0 30px rgba(108,211,255,0.55), inset 0 0 24px rgba(108,211,255,0.12)"
-                      : isHovered
-                        ? "0 0 24px rgba(255,255,255,0.28), inset 0 0 16px rgba(255,255,255,0.05)"
-                        : "none",
-                    cursor: "pointer",
-                    transition: "all 220ms ease",
-                  }}
-                >
-                  {(isHovered || isActive) && (
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: 10,
-                        left: 10,
-                        fontSize: 12,
-                        padding: "6px 10px",
-                        borderRadius: 999,
-                        background: "rgba(0,0,0,0.48)",
-                        color: "#fff",
-                        border: "1px solid rgba(255,255,255,0.12)",
-                        backdropFilter: "blur(8px)",
-                      }}
-                    >
-                      {spot.title}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-
-            {active && (
-              <button
-                onClick={() => setActiveId(null)}
-                style={{
-                  position: "absolute",
-                  right: 18,
-                  bottom: 18,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(0,0,0,0.5)",
-                  color: "#fff",
-                  borderRadius: 14,
-                  padding: "12px 16px",
-                  cursor: "pointer",
-                  backdropFilter: "blur(10px)",
+          <div className="room-demo__layout">
+            <div className="room-demo__viewport" ref={roomRef}>
+              <div
+                className={`room-demo__scene ${activeHotspot ? 'is-focused' : ''} ${expandedObject ? 'is-dimmed' : ''}`}
+                style={{ transform: sceneTransform }}
+                onMouseMove={handleMouseMove}
+                onWheel={handleWheel}
+                onMouseLeave={() => {
+                  targetRef.current = { x: 0, y: 0 };
                 }}
               >
-                Back to room
-              </button>
-            )}
-          </div>
+                <img className="room-demo__image" src="/room.jpg" alt="Interactive investor room" draggable={false} />
 
-          <div
-            style={{
-              minHeight: 240,
-              borderRadius: 28,
-              padding: 20,
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              boxShadow: "0 18px 50px rgba(0,0,0,0.25)",
-              backdropFilter: "blur(14px)",
-            }}
-          >
-            {active ? (
-              <>
-                <div
-                  style={{
-                    fontSize: 12,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.18em",
-                    color: "rgba(255,255,255,0.45)",
-                    marginBottom: 8,
-                  }}
+                <div className="room-demo__glow room-demo__glow--left" />
+                <div className="room-demo__glow room-demo__glow--right" />
+
+                {hotspots.map((spot) => {
+                  const isHovered = hoveredId === spot.id;
+                  const isActive = activeId === spot.id;
+                  const isLaptop = spot.id === 'laptop';
+
+                  return (
+                    <button
+                      key={spot.id}
+                      type="button"
+                      className={`room-demo__hotspot room-hotspot ${isLaptop ? 'is-laptop' : ''} ${showHotspots ? 'is-debug-visible' : ''} ${isHovered ? 'is-hovered' : ''} ${isActive ? 'is-active' : ''}`}
+                      style={{
+                        left: `${spot.x}%`,
+                        top: `${spot.y}%`,
+                        width: `${spot.width}%`,
+                        height: `${spot.height}%`,
+                      }}
+                      onMouseEnter={() => {
+                        markInteraction();
+                        setHoveredId(spot.id);
+                      }}
+                      onMouseLeave={() => setHoveredId(null)}
+                      onClick={() => openHotspot(spot.id)}
+                      aria-label={spot.title}
+                      disabled={Boolean(expandedObject)}
+                    >
+                      <span className="room-demo__hotspot-hit" />
+                      <span className="room-demo__hotspot-outline room-hotspot-outline" />
+                      <span className="room-demo__hotspot-ring" />
+                      <span className="room-demo__hotspot-label">{spot.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="room-demo__hud">
+                {activeHotspot ? (
+                  <>
+                    <span>Focused object</span>
+                    <span>Use Back to return to overview</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Hover or tap objects to explore</span>
+                    <span>Use two-finger trackpad gesture to move the scene</span>
+                  </>
+                )}
+                <button
+                  type="button"
+                  className="room-demo__debug-toggle"
+                  onClick={() => setShowHotspots((value) => !value)}
                 >
-                  Active object
-                </div>
-                <div style={{ fontSize: 28, fontWeight: 700, marginBottom: 10 }}>
-                  {active.title}
-                </div>
-                <div
-                  style={{
-                    fontSize: 15,
-                    lineHeight: 1.5,
-                    color: "rgba(255,255,255,0.72)",
-                    marginBottom: 18,
-                  }}
-                >
-                  {active.description}
-                </div>
-                {panelContent(active, playing, setPlaying)}
-              </>
-            ) : (
-              <>
-                <div
-                  style={{
-                    fontSize: 12,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.18em",
-                    color: "rgba(255,255,255,0.45)",
-                    marginBottom: 8,
-                  }}
-                >
-                  Scene status
-                </div>
-                <div style={{ fontSize: 24, fontWeight: 700, marginBottom: 10 }}>
-                  Room overview
-                </div>
-                <div
-                  style={{
-                    fontSize: 15,
-                    lineHeight: 1.6,
-                    color: "rgba(255,255,255,0.72)",
-                  }}
-                >
-                  This demo shows one personal interactive room. Each object acts as
-                  an entry point into a different product function.
-                </div>
-              </>
-            )}
+                  {showHotspots ? 'Hide Hotspots' : 'Show Hotspots'}
+                </button>
+              </div>
+
+              {activeHotspot ? (
+                <button type="button" className="room-demo__floating-back" onClick={resetView}>
+                  Back to room
+                </button>
+              ) : null}
+
+              {expandedObject === 'laptop' ? <WorkspaceOverlay onClose={closeExpandedObject} /> : null}
+            </div>
+
+            <ActivePanel
+              hotspot={activeHotspot}
+              activeAction={activeAction}
+              onAction={setActiveAction}
+              onBack={resetView}
+            />
           </div>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }
