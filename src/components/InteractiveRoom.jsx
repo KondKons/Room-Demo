@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { hotspots } from '../data/hotspots.js';
+import { rooms } from '../data/rooms.js';
 
 const PAN_SENSITIVITY = 0.32;
 const PAN_MAX_X_RATIO = 0.05;
@@ -58,14 +58,15 @@ const panelConfig = {
   },
 };
 
-function ActivePanel({ hotspot, activeAction, onAction, onBack }) {
+function ActivePanel({ room, hotspot, activeAction, onAction, onBack }) {
   if (!hotspot) {
     return (
       <aside className="room-panel room-panel--idle">
-        <p className="room-panel__eyebrow">Habitat</p>
-        <h2>Interactive Room</h2>
+        <p className="room-panel__eyebrow">{room.title}</p>
+        <h2>{room.subtitle}</h2>
         <p className="room-panel__description">
-          An immersive personal room interface for presence, media, productivity, communication, and identity.
+          A configurable interactive room system that adapts to different personalities without changing the product
+          interaction model.
         </p>
       </aside>
     );
@@ -168,6 +169,7 @@ export function InteractiveRoom() {
   const lastPanInputAtRef = useRef(0);
   const lastInteractionAtRef = useRef(0);
   const [hasEntered, setHasEntered] = useState(false);
+  const [selectedRoomId, setSelectedRoomId] = useState('creator');
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [manualPan, setManualPan] = useState({ x: 0, y: 0 });
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
@@ -177,14 +179,17 @@ export function InteractiveRoom() {
   const [expandedObject, setExpandedObject] = useState(null);
   const [showHotspots, setShowHotspots] = useState(false);
 
-  const activeHotspot = useMemo(
-    () => hotspots.find((item) => item.id === activeId) ?? null,
-    [activeId],
+  const selectedRoom = useMemo(
+    () => rooms.find((room) => room.id === selectedRoomId) ?? rooms[0],
+    [selectedRoomId],
   );
 
-  useEffect(() => {
-    return () => window.clearTimeout(laptopExpandTimeoutRef.current);
-  }, []);
+  const activeHotspot = useMemo(
+    () => selectedRoom.hotspots.find((item) => item.id === activeId) ?? null,
+    [activeId, selectedRoom.hotspots],
+  );
+
+  useEffect(() => () => window.clearTimeout(laptopExpandTimeoutRef.current), []);
 
   useEffect(() => {
     const node = roomRef.current;
@@ -262,9 +267,34 @@ export function InteractiveRoom() {
     lastInteractionAtRef.current = performance.now();
   };
 
+  const clearRoomState = () => {
+    window.clearTimeout(laptopExpandTimeoutRef.current);
+    setExpandedObject(null);
+    setActiveId(null);
+    setHoveredId(null);
+    targetRef.current = { x: 0, y: 0 };
+    panRef.current = { x: 0, y: 0 };
+    lastPanInputAtRef.current = 0;
+    updateManualPan({ x: 0, y: 0 });
+  };
+
+  const resetView = () => {
+    markInteraction();
+    clearRoomState();
+  };
+
   const handleEnterRoom = () => {
     markInteraction();
     setHasEntered(true);
+  };
+
+  const handleRoomSwitch = (roomId) => {
+    if (roomId === selectedRoomId) {
+      return;
+    }
+
+    resetView();
+    setSelectedRoomId(roomId);
   };
 
   const handleMouseMove = (event) => {
@@ -332,18 +362,6 @@ export function InteractiveRoom() {
     );
   };
 
-  const resetView = () => {
-    window.clearTimeout(laptopExpandTimeoutRef.current);
-    markInteraction();
-    setExpandedObject(null);
-    setActiveId(null);
-    setHoveredId(null);
-    targetRef.current = { x: 0, y: 0 };
-    panRef.current = { x: 0, y: 0 };
-    lastPanInputAtRef.current = 0;
-    updateManualPan({ x: 0, y: 0 });
-  };
-
   const sceneTransform = useMemo(() => {
     if (activeHotspot && viewport.width && viewport.height) {
       const focusX = (activeHotspot.focusX / 100) * viewport.width;
@@ -400,7 +418,20 @@ export function InteractiveRoom() {
           <div className="room-demo__chrome">
             <div>
               <p className="room-demo__kicker">Habitat</p>
-              <p className="room-demo__lede">A personal digital room interface</p>
+              <p className="room-demo__lede">{selectedRoom.subtitle}</p>
+            </div>
+
+            <div className="room-switcher" role="tablist" aria-label="Room switcher">
+              {rooms.map((room) => (
+                <button
+                  key={room.id}
+                  type="button"
+                  className={`room-switcher__button ${room.id === selectedRoomId ? 'is-active' : ''}`}
+                  onClick={() => handleRoomSwitch(room.id)}
+                >
+                  {room.title}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -415,19 +446,19 @@ export function InteractiveRoom() {
                   targetRef.current = { x: 0, y: 0 };
                 }}
               >
-                <img className="room-demo__image" src="/room.jpg" alt="Interactive investor room" draggable={false} />
+                <img className="room-demo__image" src={selectedRoom.image} alt={selectedRoom.title} draggable={false} />
 
                 <div className="room-demo__glow room-demo__glow--left" />
                 <div className="room-demo__glow room-demo__glow--right" />
 
-                {hotspots.map((spot) => {
+                {selectedRoom.hotspots.map((spot) => {
                   const isHovered = hoveredId === spot.id;
                   const isActive = activeId === spot.id;
                   const isLaptop = spot.id === 'laptop';
 
                   return (
                     <button
-                      key={spot.id}
+                      key={`${selectedRoom.id}-${spot.id}`}
                       type="button"
                       className={`room-demo__hotspot room-hotspot ${isLaptop ? 'is-laptop' : ''} ${showHotspots ? 'is-debug-visible' : ''} ${isHovered ? 'is-hovered' : ''} ${isActive ? 'is-active' : ''}`}
                       style={{
@@ -462,8 +493,8 @@ export function InteractiveRoom() {
                   </>
                 ) : (
                   <>
-                    <span>Hover or tap objects to explore</span>
-                    <span>Use two-finger trackpad gesture to move the scene</span>
+                    <span>{selectedRoom.title}</span>
+                    <span>{selectedRoom.subtitle}</span>
                   </>
                 )}
                 <button
@@ -485,6 +516,7 @@ export function InteractiveRoom() {
             </div>
 
             <ActivePanel
+              room={selectedRoom}
               hotspot={activeHotspot}
               activeAction={activeAction}
               onAction={setActiveAction}
